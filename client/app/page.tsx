@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 // Using Socket.IO client for easier WebSocket management (reconnects, etc.)
 // Install with: npm install socket.io-client
-// import io, { Socket } from 'socket.io-client';
+// Removed Socket.IO import
 
 // --- Configuration ---
 // Now, the frontend talks to its OWN origin, and the K8s Ingress/Service
@@ -13,10 +13,13 @@ import { useState, useEffect, useRef } from 'react';
 // Use a relative path or the frontend's own external URL.
 const BASE_URL = process.env.NEXT_PUBLIC_FRONTEND_URL || ''; // Use empty string for relative path if deployed on same domain
 const START_GAME_ENDPOINT = `${BASE_URL}/api/start`; // Map this path in your Ingress/proxy to the Go backend's /start
-const WEBSOCKET_ENDPOINT = `${BASE_URL}/ws`; // Map this path in your Ingress/proxy to the Go backend's /ws
+const STOP_GAME_ENDPOINT = `${BASE_URL}/api/stop`; //
+// Construct WebSocket URL, replacing http(s) with ws(s)
+const WEBSOCKET_URL = `${BASE_URL}/ws`.replace(/^http/, 'ws');
 
 // Define the possible arrow keys
 const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+// const ARROW_KEYS = ['ArrowUp'];
 
 export default function GamePage() {
   // --- State Management ---
@@ -26,8 +29,15 @@ export default function GamePage() {
   const [sequence, setSequence] = useState<string[]>([]); // The sequence user needs to press
   const [sequenceIndex, setSequenceIndex] = useState(0); // Current position in the sequence
 
+  const gameStateRef = useRef(gameState); // Ref to hold current gameState
+
   // Ref for the WebSocket connection
-  // const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+
+  // Update gameStateRef whenever gameState changes
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   // --- Game Logic Functions ---
 
@@ -35,6 +45,23 @@ export default function GamePage() {
   const generateSequence = (length: number): string[] => {
     return Array.from({ length }, () => ARROW_KEYS[Math.floor(Math.random() * ARROW_KEYS.length)]);
   };
+
+
+  const endGame = async () => {
+    try {
+      const response = await fetch(STOP_GAME_ENDPOINT, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      console.log('Scale down triggered!')
+
+    } catch (error) {
+      console.error('Failed to trigger scale down', error);
+    }
+  }
 
   // Handles the game start logic
   const startGame = async () => {
@@ -45,73 +72,82 @@ export default function GamePage() {
     const initialSequence = generateSequence(5); // Start with a sequence of 5
     setSequence(initialSequence);
 
-    // // 1. Trigger Scale Up via Backend HTTP Endpoint (routed through frontend's URL)
-    // try {
-    //   const response = await fetch(START_GAME_ENDPOINT, {
-    //     method: 'POST',
-    //     // Add headers if needed (e.g., for authentication)
-    //   });
+    // 1. Trigger Scale Up via Backend HTTP Endpoint (routed through frontend's URL)
+    try {
+      const response = await fetch(START_GAME_ENDPOINT, {
+        method: 'POST',
+        // Add headers if needed (e.g., for authentication)
+      });
 
-    //   if (!response.ok) {
-    //     throw new Error(`HTTP error! status: ${response.status}`);
-    //   }
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-    //   console.log('Scale up triggered successfully');
+      console.log('Scale up triggered successfully');
 
-    // } catch (error) {
-    //   console.error('Failed to trigger scale up:', error);
-    //   // Handle error: maybe show a message to the user and reset state
-    //   setGameState('idle');
-    //   alert('Failed to start the game. Please check the backend connection.');
-    //   return; // Stop here if the trigger failed
-    // }
+    } catch (error) {
+      console.error('Failed to trigger scale up:', error);
+      // Handle error: maybe show a message to the user and reset state
+      setGameState('idle');
+      return; // Stop here if the trigger failed
+    }
 
-    // // 2. Establish WebSocket connection for Real-time Updates (routed through frontend's URL)
-    // // Socket.IO client will handle connection attempts and re-attempts
-    // const socket = io(WEBSOCKET_ENDPOINT); // Connect to the WebSocket endpoint on the frontend's URL
-    // socketRef.current = socket;
+    // 2. Establish WebSocket connection for Real-time Updates (routed through frontend's URL)
+    // Socket.IO client will handle connection attempts and re-attempts
+    // Establish standard WebSocket connection
+    const socket = new WebSocket(WEBSOCKET_URL);
+    socketRef.current = socket;
 
-    // socket.on('connect', () => {
-    //   console.log('WebSocket connected');
-    //   // You could potentially send a message here to subscribe to updates
-    // });
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+      // Standard WebSocket doesn't require explicit subscription messages here
+      // The backend sends updates automatically upon connection and changes
+    };
 
-    // // Listen for replica count updates from the backend
-    // socket.on('replicaUpdate', (data: { replicas: number }) => {
-    //   console.log('Received replica update:', data.replicas);
-    //   setReplicaCount(data.replicas);
+    // Listen for messages from the backend
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data && typeof data.replicas === 'number') {
+          // console.log('Received replica update:', data.replicas); // Original log
+          setReplicaCount(data.replicas);
 
-    //   // Check if Kubernetes scaling "won"
-    //   if (data.replicas >= 50 && gameState === 'playing') {
-    //     // Add a small delay so the user sees the final count before the alert
-    //     setTimeout(() => {
-    //       if (gameState === 'playing') { // Double check state in case user won points simultaneously
-    //         setGameState('finished');
-    //         alert(`Game Over! Kubernetes scaled to 50 replicas. Your final score: ${points}`);
-    //         socket.disconnect(); // Disconnect WebSocket
-    //       }
-    //     }, 100); // Short delay
-    //   }
-    // });
+          // Check if Kubernetes scaling "won"
+          if (data.replicas >= 50 && gameStateRef.current === 'playing') {
+            // Add a small delay so the user sees the final count before the alert
+            setTimeout(() => {
+              if (gameStateRef.current === 'playing') { // Double check state in case user won points simultaneously
+                setGameState('finished');
+                socket.close(); // Close standard WebSocket
+              }
+            }, 100); // Short delay
+          }
+        } else {
+          console.warn('Received unexpected WebSocket message format:', event.data);
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error, 'Data:', event.data);
+      }
+    };
 
-    // socket.on('disconnect', (reason) => {
-    //   console.log('WebSocket disconnected:', reason);
-    //   // Handle disconnect - maybe show a message or attempt reconnect (Socket.IO does this by default)
-    //   if (gameState === 'playing') {
-    //     // If game is ongoing and socket disconnects, it's likely an issue
-    //     setGameState('finished');
-    //     alert('Game Over! Connection to backend lost.');
-    //   }
-    // });
+    socket.onclose = (event) => {
+      console.log('WebSocket disconnected:', event.reason, 'Code:', event.code);
+      // Handle disconnect
+      if (gameStateRef.current === 'playing') {
+        // If game is ongoing and socket disconnects, it's likely an issue
+        setGameState('finished');
+      }
+      socketRef.current = null; // Clear ref on close
+    };
 
-    // socket.on('connect_error', (err) => {
-    //   console.error('WebSocket connection error:', err);
-    //   // Handle connection errors
-    //   if (gameState === 'playing') {
-    //     setGameState('finished'); // End game if connection fails
-    //     alert('Game Over! Failed to connect to backend.');
-    //   }
-    // });
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      // Handle connection errors
+      if (gameStateRef.current === 'playing') {
+        setGameState('finished'); // End game if connection fails
+      }
+      socketRef.current = null; // Clear ref on error
+    };
   };
 
   // Handles user pressing an arrow key during the game
@@ -126,8 +162,7 @@ export default function GamePage() {
         // Check if user won
         if (newPoints >= 50) {
           setGameState('finished');
-          alert(`You Win! You reached 50 points! Kubernetes replicas: ${replicaCount}`);
-          // socketRef.current?.disconnect(); // Disconnect WebSocket
+          // socketRef.current?.close(); // Close standard WebSocket
         }
         return newPoints;
       });
@@ -146,11 +181,10 @@ export default function GamePage() {
 
     } else {
       // Incorrect key pressed - handle failure
-      console.log('Incorrect key!');
-      // Optional: Penalize points, reset sequence, etc.
-      // For simplicity, we'll just reset the sequence progress here
-      setSequenceIndex(0);
-      // setPoints(prevPoints => Math.max(0, prevPoints - 1)); // Example penalty
+      console.log('Incorrect key! Points gained in this sequence will be lost.');
+      const pointsGainedThisSequence = sequenceIndex; // Capture points earned in current sequence
+      setPoints(prevPoints => Math.max(0, prevPoints - pointsGainedThisSequence)); // Revoke those points
+      setSequenceIndex(0); // Reset sequence progress
     }
   };
 
@@ -167,26 +201,42 @@ export default function GamePage() {
     // Add the global keydown listener
     window.addEventListener('keydown', handleKeyDown);
 
-    // Clean up event listener and WebSocket connection on component unmount
+    // Clean up event listener on component unmount or when dependencies change
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      // if (socketRef.current) {
-      //   socketRef.current.disconnect();
-      //   socketRef.current = null; // Clear the ref
-      // }
     };
-  }, [gameState, sequence, sequenceIndex, points, replicaCount]); // Dependencies for useEffect
+    // Dependencies should include everything read by handleKeyDown and functions it calls
+    // startGame and handleArrowKeyPress are defined in the component scope,
+    // so they are recreated on each render. To make them stable, they could be
+    // wrapped in useCallback, or we list their own underlying state dependencies here.
+    // For now, listing the states directly used or affected by keydown actions:
+  }, [gameState, sequence, sequenceIndex, points]); // Removed replicaCount
+
+  // Effect for WebSocket cleanup ONLY on component unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        console.log("Component unmounting, closing WebSocket via unmount effect.");
+        socketRef.current.close();
+        socketRef.current = null; // Clear the ref
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only on mount and unmount
 
   // Effect to ensure socket is disconnected if game state changes to finished by other means
   useEffect(() => {
-    if (gameState === 'finished'
-      // && socketRef.current
-    ) {
+    if (gameState === 'finished' && socketRef.current) {
       console.log("Game finished, ensuring socket is disconnected.");
-      // socketRef.current.disconnect();
-      // socketRef.current = null;
+      socketRef.current.close();
+      socketRef.current = null;
     }
   }, [gameState]);
+
+  useEffect(() => {
+    if(gameState === 'finished') {
+      endGame();
+    }
+  }, [gameState])
 
 
   // --- Rendered UI ---
@@ -206,7 +256,7 @@ export default function GamePage() {
           <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
             {/* Player Info */}
             <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', minWidth: '200px' }}>
-              <h2 style={{fontSize: '2em'}}>Your Points: <span style={{ color: 'green' }}>{points}</span> / 50</h2>
+              <h2 style={{ fontSize: '2em' }}>Your Points: <span style={{ color: 'green' }}>{points}</span> / 50</h2>
               <p>Press the sequence:</p>
               <div style={{ minHeight: '1.5em' }}> {/* Reserve space */}
                 {sequence.map((key, index) => (
