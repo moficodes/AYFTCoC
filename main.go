@@ -43,7 +43,7 @@ var (
 
 	// Directory where the static Next.js files are located within the container/local filesystem
 	staticFilesDir = os.Getenv("STATIC_FILES_DIR") // e.g., "/app/out"
-	local          = true
+	local          = os.Getenv("LOCAL")
 )
 
 func main() {
@@ -57,6 +57,10 @@ func main() {
 		// log.Fatal("STATIC_FILES_DIR environment variable must be set to the path of Next.js static files")
 		staticFilesDir = "client/out"
 	}
+	if local == "" {
+		local = "true"
+	}
+
 	log.Printf("Targeting deployment %s/%s for scaling and monitoring", targetDeploymentNamespace, targetDeploymentName)
 	log.Printf("Serving static files from directory: %s", staticFilesDir)
 
@@ -66,7 +70,7 @@ func main() {
 	var clientset *kubernetes.Clientset
 	var err error
 
-	if local {
+	if local == "true" {
 		home := homedir.HomeDir()
 		kubeconfig := filepath.Join(home, ".kube", "config")
 		config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
