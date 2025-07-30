@@ -57,6 +57,6 @@ For each new project, we will create and maintain three markdown files to track 
 
 ## Git Repo
 
-The main branch for this project is called "main"
-
-For making changes use the `gh` cli tool.
+* The main branch for this project is called "main"
+* For making changes use the `gh` cli tool.
+* For making changes, create a new branch with the prefix `feature/`, `doc/` or `bugfix/` followed by a descriptive name.
