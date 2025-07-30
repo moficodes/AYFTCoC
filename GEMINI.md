@@ -1,7 +1,3 @@
-## Git Repo
-
-The main branch for this project is called "main"
-
 # The 3-Stage Workflow: Plan, Define, Act
 
 For each new project, we will create and maintain three markdown files to track our progress: \`PLAN.md\`, \`DEFINE.md\`, and \`ACTION.md\`.
@@ -58,3 +54,9 @@ For each new project, we will create and maintain three markdown files to track 
 * **Modularity:** Design components to be modular and loosely coupled to facilitate future changes and testing.  
 * **Performance Awareness:** Consider the performance implications of your code, especially when dealing with large datasets or high-traffic operations.  
 * **Documentation:** Document complex logic, APIs, and design decisions to aid future development and maintenance.
+
+## Git Repo
+
+The main branch for this project is called "main"
+
+For making changes use the `gh` cli tool.

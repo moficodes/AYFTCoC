@@ -1,4 +1,4 @@
-# Are You Faster Than a Kubelet?
+# Are You Faster Than Container Optimized Compute?
 
 This project is a web-based game that tests your reaction time against the scaling speed of a Kubernetes deployment.
 
