@@ -2,6 +2,7 @@
 'use client'; // Important if using the App Router
 
 import { useState, useEffect, useRef } from 'react';
+import { IconX, IconCircle, IconSquare, IconTriangle} from '@tabler/icons-react';
 // Using Socket.IO client for easier WebSocket management (reconnects, etc.)
 // Install with: npm install socket.io-client
 // Removed Socket.IO import
@@ -19,6 +20,7 @@ const WEBSOCKET_URL = `${BASE_URL}/ws`.replace(/^http/, 'ws');
 
 // Define the possible arrow keys
 const ARROW_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+const ALLOWED_KEYS = ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D'];
 // const ARROW_KEYS = ['ArrowUp'];
 
 export default function GamePage() {
@@ -154,6 +156,11 @@ export default function GamePage() {
   const handleArrowKeyPress = (key: string) => {
     if (gameState !== 'playing') return; // Only process input when playing
 
+    if (key === 'w' || key === 'W') key = 'ArrowUp';
+    if (key === 'a' || key === 'A') key = 'ArrowLeft';
+    if (key === 's' || key === 'S') key = 'ArrowDown';
+    if (key === 'd' || key === 'D') key = 'ArrowRight';
+
     if (key === sequence[sequenceIndex]) {
       // Correct key pressed!
       console.log('Correct key!');
@@ -193,7 +200,7 @@ export default function GamePage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (gameState === 'idle' && event.key === 'Enter') {
         startGame();
-      } else if (gameState === 'playing' && ARROW_KEYS.includes(event.key)) {
+      } else if (gameState === 'playing' && (ARROW_KEYS.includes(event.key) || ALLOWED_KEYS.includes(event.key))) {
         handleArrowKeyPress(event.key);
       }
     };
@@ -242,12 +249,12 @@ export default function GamePage() {
   // --- Rendered UI ---
   return (
     <div style={{ fontFamily: 'sans-serif', textAlign: 'center', padding: '20px' }}>
-      <h1>Kubernetes Scaling Race Game</h1>
+      <h1>Are You Faster CoCP?</h1>
 
       {gameState === 'idle' && (
         <div style={{ marginTop: '50px' }}>
-          <p style={{ fontSize: '4em' }}>Press **Enter** to start the race!</p>
-          <p>Compete against Kubernetes scaling!</p>
+          <p style={{ fontSize: '4em' }}>Press <span className='bold'>Enter</span> to start the race!</p>
+          <p>Compete against GKE scaling!</p>
         </div>
       )}
 
@@ -270,10 +277,10 @@ export default function GamePage() {
                     }}
                   >
                     {/* Display arrow symbols or text */}
-                    {key === 'ArrowUp' && '↑'}
-                    {key === 'ArrowDown' && '↓'}
-                    {key === 'ArrowLeft' && '←'}
-                    {key === 'ArrowRight' && '→'}
+                    {key === 'ArrowUp' && <IconTriangle size={36}/>}
+                    {key === 'ArrowDown' && <IconCircle size={36} />}
+                    {key === 'ArrowLeft' && <IconX size={36} />}
+                    {key === 'ArrowRight' && <IconSquare size={36} />}
                     {/* Or use text: {key.replace('Arrow', '')} */}
                   </span>
                 ))}
@@ -323,7 +330,8 @@ export default function GamePage() {
 
       {/* Basic Instructions */}
       <div style={{ marginTop: '40px', fontSize: '0.9em', color: '#555' }}>
-        <p>Instructions: Press the arrow keys (↑, ↓, ←, →) in the order shown to gain points.</p>
+        <p>Instructions: Press the arrow keys (↑, ↓, ←, →), (X, O, □, ∆) or (w, a, s, d) in the order shown to gain points.</p>
+        <p>(↑ == w == ∆, ↓ == s == O, ← == a == X, → == d == □)</p>
         <p>Race to 50 points before Kubernetes scales the target application to 50 replicas!</p>
       </div>
     </div>
